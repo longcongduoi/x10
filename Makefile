@@ -1,18 +1,22 @@
 OS_NAME = $(shell uname -s)
 ifeq (${OS_NAME},Darwin)
     CXX = clang++
-    STD = -std=c++11 -stdlib=libc++
-	RTLIB =
+    CXXFLAGS_COMP_OS = -std=c++11 -stdlib=libc++
+    CXXFLAGS_LINK_OS = -framework CoreServices
 else
     CXX = g++
-    STD = -std=gnu++0x
-	RTLIB = -lrt
+    CXXFLAGS_COMP_OS = -std=gnu++0x -lrt
+    CXXFLAGS_LINK_OS = -lrt
 endif
 
-CXXFLAGS = $(STD) -I./libuv/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
+INCLUDE = -Ilibuv/include -Iinclude
+CXXFLAGS = $(INCLUDE) -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 CXXFLAGS_DEBUG = $(CXXFLAGS) -g -O0
 
-all: x10.a
+all: app1
+
+app1: x10.a app1.cpp
+	$(CXX) $(CXXFLAGS_DEBUG) $(CXXFLAGS_COMP_OS) -o app1 app1.cpp $(CXXFLAGS_LINK_OS) -lm -lpthread x10.a
 
 x10.a: libuv/uv.a x10.o
 	mkdir -p objs
@@ -23,15 +27,18 @@ x10.a: libuv/uv.a x10.o
 	cp x10.a ../; \
 	cd ..; \
 	rm -rf objs
+    
+x10.o: x10.cpp $(wildcard include/*.h) $(wildcard include/detail/*.h)
+	$(CXX) $(CXXFLAGS_DEBUG) $(CXXFLAGS_COMP_OS) -o x10.o -c x10.cpp
 
 libuv/uv.a:
 	$(MAKE) -C libuv
-    
-x10.o:
-	$(CXX) $(CXXFLAGS) -o x10.o -c x10.cpp $(RTLIB) -lm -lpthread
+
+clean-all: clean
+	rm -f libuv/uv.a
 
 clean:
-	rm -f libuv/uv.a
 	rm -f x10.a
 	rm -f x10.o
+	rm -f app1
 	rm -rf objs
