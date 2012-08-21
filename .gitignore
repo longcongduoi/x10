@@ -18,3 +18,9 @@
 Icon?
 ehthumbs.db
 Thumbs.db
+
+# For XCode 4
+*.pbxuser
+*.perspective
+*.perspectivev3
+xcuserdata
