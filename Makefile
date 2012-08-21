@@ -33,5 +33,5 @@ x10.o:
 clean:
 	rm -f libuv/uv.a
 	rm -f x10.a
-	rm -f x10d.a
+	rm -f x10.o
 	rm -rf objs
