@@ -5,7 +5,7 @@ int main(int argc, char** argv)
 {
     std::cout << "App1" << std::endl;
     
-    auto test = x10::fs::open("app1.cpp", O_RDONLY, 0);
+    auto test = x10::file::open(x10::readonly, "app1.cpp");
     
     std::cout << test << std::endl;
     

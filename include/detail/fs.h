@@ -15,8 +15,9 @@ namespace x10
         namespace fs
         {
             typedef std::function<void()> callback_type1;
-            typedef std::function<void(resval)> callback_type2;
-            typedef std::function<void(resval, int)> callback_type3;
+            typedef std::function<void(int)> callback_type2;
+            typedef std::function<void(int, int)> callback_type3;
+            typedef std::function<void(const exception&)> error_callback_type;
 
             typedef void (*response_fn_type)(uv_fs_t*);
 
@@ -28,17 +29,17 @@ namespace x10
             void response_fn2(uv_fs_t* req)
             {
                 if(req->result == -1)
-                { event_emitter::invoke_target<callback_type2>(req->data, resval(static_cast<uv_err_code>(req->errorno))); }
+                { event_emitter::invoke_target<callback_type2>(req->data, req->errorno); }
                 else
-                { event_emitter::invoke_target<callback_type2>(req->data, resval()); }
+                { event_emitter::invoke_target<callback_type2>(req->data, 0); }
             }
 
             void response_fn3(uv_fs_t* req)
             {
                 if(req->result == -1)
-                { event_emitter::invoke_target<callback_type3>(req->data, resval(static_cast<uv_err_code>(req->errorno)), -1); }
+                { event_emitter::invoke_target<callback_type3>(req->data, req->errorno, -1); }
                 else
-                { event_emitter::invoke_target<callback_type3>(req->data, resval(), static_cast<int>(req->result)); }
+                { event_emitter::invoke_target<callback_type3>(req->data, 0, static_cast<int>(req->result)); }
             }
 
             template<int fstype, typename reqfntype, reqfntype* reqfn>
@@ -101,14 +102,14 @@ namespace x10
             {
                 static const int fs_type = UV_FS_READLINK;
                 static constexpr decltype(&uv_fs_readlink) request_fn = &uv_fs_readlink;
-                typedef std::function<void(resval, const std::string&)> callback_type;
+                typedef std::function<void(int, const std::string&)> callback_type;
 
                 void response_fn(uv_fs_t* req)
                 {
                     if(req->result == -1)
-                    { event_emitter::invoke_target<callback_type>(req->data, resval(static_cast<uv_err_code>(req->errorno)), std::string()); }
+                    { event_emitter::invoke_target<callback_type>(req->data, req->errorno, std::string()); }
                     else
-                    { event_emitter::invoke_target<callback_type>(req->data, resval(), std::string(static_cast<char*>(req->ptr))); }
+                    { event_emitter::invoke_target<callback_type>(req->data, 0, std::string(static_cast<char*>(req->ptr))); }
                 }
             };
 
@@ -116,13 +117,13 @@ namespace x10
             {
                 static const int fs_type = UV_FS_READDIR;
                 static constexpr decltype(&uv_fs_readdir) request_fn = &uv_fs_readdir;
-                typedef std::function<void(resval, const std::vector<std::string>&)> callback_type;
+                typedef std::function<void(int, const std::vector<std::string>&)> callback_type;
 
                 void response_fn(uv_fs_t* req)
                 {
                     if(req->result == -1)
                     {
-                        event_emitter::invoke_target<callback_type>(req->data, resval(static_cast<uv_err_code>(req->errorno)), std::vector<std::string>());
+                        event_emitter::invoke_target<callback_type>(req->data, req->errorno, std::vector<std::string>());
                     }
                     else
                     {
@@ -136,7 +137,7 @@ namespace x10
                             std::string name(namebuf);
                             names.push_back(name);
 
-#ifndef NDEBUG
+#ifdef _DEBUG
                             namebuf += name.length();
                             assert(*namebuf == '\0');
                             namebuf += 1;
@@ -145,7 +146,7 @@ namespace x10
 #endif
                         }
 
-                        event_emitter::invoke_target<callback_type>(req->data, resval(), names);
+                        event_emitter::invoke_target<callback_type>(req->data, 0, names);
                     }
                 }
             };
@@ -153,55 +154,67 @@ namespace x10
             template<typename T>
             void exec_after_(uv_fs_t* req)
             {
-                assert(req);
                 assert(T::fs_type == req->fs_type);
 
                 T::response_fn(req);
 
                 // cleanup
-                delete reinterpret_cast<event_emitter*>(req->data);
                 uv_fs_req_cleanup(req);
-                delete req;
             }
 
             template<typename T, bool async, typename ...P>
-            resval exec(typename T::callback_type callback, P&&... params)
+            void exec(typename T::callback_type callback, P&&... params)
             {
-                auto req = new uv_fs_t;
-                assert(req);
-
-                req->data = new event_emitter();
-                assert(req->data);
-                event_emitter::add<typename T::callback_type>(req->data, callback);
-
-                auto res = T::request_fn(uv_default_loop(), req, std::forward<P>(params)..., async?exec_after_<T>:nullptr);
-
-                // async failure or sync success: invoke callback, clean up, and return error/success.
-                if((async && res < 0) || (!async && res >= 0))
+                static bool s_init = false;
+                static uv_fs_t req;
+                static event_emitter event;
+                
+                if(!s_init)
                 {
-                    resval rv = res < 0 ? resval(get_last_error()) : resval();
-
-                    req->result = res;
-                    req->path = nullptr;
-                    req->errorno = rv.code();
-                    exec_after_<T>(req);
-
-                    return rv;
+                    req.data = &event;
+                    s_init = true;
                 }
-
-                // sync failure: clean up and return error
-                if(!async && res < 0)
+                
+                if(async)
                 {
-                    uv_fs_req_cleanup(req);
-                    delete req;
-                    return get_last_error();
+                    event_emitter::add<typename T::callback_type>(req.data, callback);
+                    
+                    auto res = T::request_fn(uv_default_loop(), &req, std::forward<P>(params)..., exec_after_<T>);
+                    
+                    if(res < 0)
+                    {
+                        uv_fs_req_cleanup(&req);
+                        throw exception(get_last_error_str());
+                    }
+                    else
+                    {
+                        // async success: callback function will be invoked later
+                    }
                 }
-
-                // async success: return success (callback will be invoked later)
-                return resval();
+                else
+                {
+                    event_emitter::add<typename T::callback_type>(req.data, callback);
+                    
+                    auto res = T::request_fn(uv_default_loop(), &req, std::forward<P>(params)..., nullptr);
+                    
+                    if(res < 0)
+                    {
+                        uv_fs_req_cleanup(&req);
+                        throw exception(get_last_error_str());
+                    }
+                    else
+                    {
+                        // sync success: invoke callback function
+                        req.result = res;
+                        req.path = nullptr;
+                        req.errorno = 0;
+                        
+                        exec_after_<T>(&req);
+                    }
+                }
             }
-            
-            typedef std::function<void(const char*, std::size_t, resval)> rte_callback_type;
+ 
+            typedef std::function<void(const char*, std::size_t, int)> rte_callback_type;
 
             class rte_context
             {
@@ -219,15 +232,15 @@ namespace x10
                 ~rte_context()
                 {}
 
-                resval read(bool invoke_error)
+                uv_err_t read(bool invoke_error)
                 {
-                    resval rv;
+                    uv_err_t err;
                     if(uv_fs_read(uv_default_loop(), &req_, fd_, &buf_[0], buf_.size(), result_.size(), rte_cb) < 0)
                     {
-                        rv = get_last_error();
+                        err = get_last_error();
                         if(invoke_error)
                         {
-                            end_error(rv);
+                            end_error(err.code);
                         }
                         else
                         {
@@ -235,10 +248,10 @@ namespace x10
                             delete this;
                         }
                     }
-                    return rv;
+                    return err;
                 }
 
-                resval read_more(std::size_t length)
+                uv_err_t read_more(std::size_t length)
                 {
                     result_.insert(result_.end(), buf_.begin(), buf_.begin()+length);
 
@@ -247,7 +260,7 @@ namespace x10
                     return read(true);
                 }
 
-                void end_error(resval e)
+                void end_error(int e)
                 {
                     try
                     {
@@ -266,7 +279,7 @@ namespace x10
                 {
                     try
                     {
-                        callback_(&result_[0], result_.size(), resval());
+                        callback_(&result_[0], result_.size(), 0);
                     }
                     catch(...)
                     {
@@ -289,7 +302,7 @@ namespace x10
                     if(req->errorno)
                     {
                         // error
-                        self->end_error(resval(static_cast<uv_err_code>(req->errorno)));
+                        self->end_error(req->errorno);
                     }
                     else if(req->result == 0)
                     {
@@ -312,10 +325,12 @@ namespace x10
             };
 
             // read all data asynchronously
-            resval read_to_end(int fd, rte_callback_type callback)
+            uv_err_t read_to_end(int fd, rte_callback_type callback)
             {
+                // TODO: ctx does not have to be heap allocated.
                 auto ctx = new rte_context(fd, 512, callback);
                 assert(ctx);
+                
                 return ctx->read(false);
             }
         }

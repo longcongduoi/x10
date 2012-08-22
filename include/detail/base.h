@@ -19,68 +19,6 @@
 
 namespace x10
 {
-    namespace error
-    {
-        enum error_code_t
-        {
-            unknown = UV_UNKNOWN,
-            ok = UV_OK,
-            eof = UV_EOF,
-            eaddrinfo = UV_EADDRINFO,
-            eacces = UV_EACCES,
-            eagain = UV_EAGAIN,
-            eaddrinuse = UV_EADDRINUSE,
-            eaddrnotavail = UV_EADDRNOTAVAIL,
-            eafnosupport = UV_EAFNOSUPPORT,
-            ealready = UV_EALREADY,
-            ebadf = UV_EBADF,
-            ebusy = UV_EBUSY,
-            econnaborted = UV_ECONNABORTED,
-            econnrefused = UV_ECONNREFUSED,
-            econnreset = UV_ECONNRESET,
-            edestaddrreq = UV_EDESTADDRREQ,
-            efault = UV_EFAULT,
-            ehostunreach = UV_EHOSTUNREACH,
-            eintr = UV_EINTR,
-            einval = UV_EINVAL,
-            eisconn = UV_EISCONN,
-            emfile = UV_EMFILE,
-            emsgsize = UV_EMSGSIZE,
-            enetdown = UV_ENETDOWN,
-            enetunreach = UV_ENETUNREACH,
-            enfile = UV_ENFILE,
-            enobufs = UV_ENOBUFS,
-            enomem = UV_ENOMEM,
-            enotdir = UV_ENOTDIR,
-            eisdir = UV_EISDIR,
-            enonet = UV_ENONET,
-            enotconn = UV_ENOTCONN,
-            enotsock = UV_ENOTSOCK,
-            enotsup = UV_ENOTSUP,
-            enoent = UV_ENOENT,
-            enosys = UV_ENOSYS,
-            epipe = UV_EPIPE,
-            eproto = UV_EPROTO,
-            eprotonosupport = UV_EPROTONOSUPPORT,
-            eprototype = UV_EPROTOTYPE,
-            etimedout = UV_ETIMEDOUT,
-            echarset = UV_ECHARSET,
-            eaifamnosupport = UV_EAIFAMNOSUPPORT,
-            eaiservice = UV_EAISERVICE,
-            eaisocktype = UV_EAISOCKTYPE,
-            eshutdown = UV_ESHUTDOWN,
-            eexist = UV_EEXIST,
-            esrch = UV_ESRCH,
-            enametoolong = UV_ENAMETOOLONG,
-            eperm = UV_EPERM,
-            eloop = UV_ELOOP,
-            exdev = UV_EXDEV,
-            __libuv_max = UV_MAX_ERRORS,
-
-            reserved,
-        };
-    }
-
     namespace detail
     {
         enum cid
@@ -95,71 +33,6 @@ namespace x10
             cid_uv_connect,
             cid_uv_connect6,
             cid_max
-        };
-
-        enum encoding_type
-        {
-            et_ascii,
-            et_utf8,
-            et_ucs2,
-            et_base64,
-            et_binary,
-            et_hex,
-            et_none
-        };
-
-        int get_encoding_code(const std::string& name)
-        {
-            if(name == "ascii") return et_ascii;
-            else if(name == "utf8") return et_utf8;
-            else if(name == "ucs2") return et_ucs2;
-            else if(name == "base64") return et_base64;
-            else if(name == "binary") return et_binary;
-            else if(name == "hex") return et_hex;
-            else return et_none;
-        }
-
-        class resval
-        {
-        public:
-            resval(int error_code=error::ok) : error_code_(error_code) {}
-            explicit resval(uv_err_t e) : error_code_(e.code) {}
-            explicit resval(uv_err_code code) : error_code_(code) {}
-            resval(const resval& c) : error_code_(c.error_code_) {}
-            resval(resval&& c) : error_code_(c.error_code_) {}
-            ~resval() {}
-
-            operator bool() const { return error_code_ == error::ok; }
-            bool operator !() const { return  error_code_ != error::ok; }
-            
-            resval& operator = (const resval& c)
-            {
-                error_code_ = c.error_code_;
-                return *this;
-            }
-
-            int code() const
-            {
-                return error_code_;
-            }
-
-            const char* str() const
-            {
-                if(error_code_ < static_cast<int>(error::__libuv_max))
-                {
-                    return uv_strerror(uv_err_t{static_cast<uv_err_code>(error_code_), 0});
-                }
-
-                switch(error_code_)
-                {
-                //case error::http_parser_fail: return "Failed to parser HTTP request or response.";
-                //case error::http_parser_url_fail: return "Failed to parse URL elements in HTTP request or response.";
-                //case error::http_parser_incomplete: return "HTTP request or response message is not complete.";
-                default: return nullptr;
-                }
-            }
-        private:
-            int error_code_;
         };
 
         struct net_addr
@@ -180,39 +53,42 @@ namespace x10
 
             return 0;
         }
+        
+        const static uv_err_t no_error = uv_err_t { UV_OK, 0 };
 
-        resval get_last_error() { return resval(uv_last_error(uv_default_loop())); }
+        uv_err_t get_last_error() { return uv_last_error(uv_default_loop()); }
+        const char* get_last_error_str() { return uv_strerror(get_last_error()); }
 
         template<typename F, typename ...A>
-        resval run_(F fn, A&&... args)
+        uv_err_t run_(F fn, A&&... args)
         {
             static_assert(std::is_pointer<F>::value, "Template parameter F is not a plain-function.");
             static_assert(std::is_same<decltype(fn(args...)), int>::value, "Return value of template parameter F is not int.");
 
-            return fn(std::forward<A>(args)...) ? get_last_error() : resval();
+            return fn(std::forward<A>(args)...) ? get_last_error() : no_error;
         }
 
         sockaddr_in to_ip4_addr(const std::string& ip, int port) { return uv_ip4_addr(ip.c_str(), port); }
         sockaddr_in6 to_ip6_addr(const std::string& ip, int port) { return uv_ip6_addr(ip.c_str(), port); }
 
-        resval from_ip4_addr(sockaddr_in* src, std::string& ip, int& port)
+        uv_err_t from_ip4_addr(sockaddr_in* src, std::string& ip, int& port)
         {
             char dest[16];
             if(uv_ip4_name(src, dest, 16)) get_last_error();
 
             ip = dest;
             port = static_cast<int>(ntohs(src->sin_port));
-            return resval();
+            return no_error;
         }
 
-        resval from_ip6_addr(sockaddr_in6* src, std::string& ip, int& port)
+        uv_err_t from_ip6_addr(sockaddr_in6* src, std::string& ip, int& port)
         {
             char dest[46];
             if(uv_ip6_name(src, dest, 46)) get_last_error();
 
             ip = dest;
             port = static_cast<int>(ntohs(src->sin6_port));
-            return resval();
+            return no_error;
         }
 
         class scl_base
@@ -314,7 +190,8 @@ namespace x10
                 }
 
                 // remove 'once' callbacks
-                list_.remove_if([&](std::pair<callback_ptr, bool>& it) {
+                list_.remove_if([&](std::pair<callback_ptr, bool>& it)
+                {
                     return to_delete.find(it.first) != to_delete.end();
                 });
             }
