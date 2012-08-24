@@ -28,7 +28,7 @@ x10.a: libuv/uv.a x10.o
 	cd ..; \
 	rm -rf objs
     
-x10.o: x10.cpp $(wildcard include/*.h) $(wildcard include/detail/*.h)
+x10.o: x10.cpp $(wildcard include/*.h)
 	$(CXX) $(CXXFLAGS_DEBUG) $(CXXFLAGS_COMP_OS) -o x10.o -c x10.cpp
 
 libuv/uv.a:
