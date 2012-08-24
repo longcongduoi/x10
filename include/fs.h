@@ -400,6 +400,19 @@ namespace x10
         {
             return fs::detail::exec_async<fs::detail::close>([callback](error_t e) mutable { callback(e); }, static_cast<int>(f));
         }
+        
+        error_t rename(const std::string& path, const std::string& new_path)
+        {
+            error_t err(error_code::ok);
+            fs::detail::exec<fs::detail::rename>([&err](error_t e) { err = e; }, path.c_str(), new_path.c_str());
+            return err;
+        }
+        
+        template<typename callback_type>
+        error_t rename(const std::string& path, const std::string& new_path, callback_type callback)
+        {
+            return fs::detail::exec_async<fs::detail::rename>([callback](error_t e) mutable { callback(e); }, path.c_str(), new_path.c_str());
+        }
     }
 }
 
