@@ -5,7 +5,8 @@
 #include <functional>
 #include "common.h"
 #include "error.h"
-#include "event_emitter.h"
+#include "task.h"
+#include "event.h"
 
 namespace x10
 {
@@ -13,7 +14,7 @@ namespace x10
     {
         namespace detail
         {
-            using x10::detail::event_emitter;
+            using x10::detail::event_object;
             using x10::detail::get_last_uv_error;
             
             typedef std::function<void(error_t)> callback_type2;
@@ -23,23 +24,23 @@ namespace x10
             
             void response_fn1(uv_fs_t* req)
             {
-                event_emitter::invoke_target<callback_type2>(req->data, no_error);
+                event_object::invoke_from_target<callback_type2>(req->data, no_error);
             }
             
             void response_fn2(uv_fs_t* req)
             {
                 if(req->result == -1)
-                { event_emitter::invoke_target<callback_type2>(req->data, error_t(static_cast<uv_err_code>(req->errorno))); }
+                { event_object::invoke_from_target<callback_type2>(req->data, error_t(static_cast<uv_err_code>(req->errorno))); }
                 else
-                { event_emitter::invoke_target<callback_type2>(req->data, no_error); }
+                { event_object::invoke_from_target<callback_type2>(req->data, no_error); }
             }
             
             void response_fn3(uv_fs_t* req)
             {
                 if(req->result == -1)
-                { event_emitter::invoke_target<callback_type3>(req->data, error_t(static_cast<uv_err_code>(req->errorno)), -1); }
+                { event_object::invoke_from_target<callback_type3>(req->data, error_t(static_cast<uv_err_code>(req->errorno)), -1); }
                 else
-                { event_emitter::invoke_target<callback_type3>(req->data, no_error, static_cast<int>(req->result)); }
+                { event_object::invoke_from_target<callback_type3>(req->data, no_error, static_cast<int>(req->result)); }
             }
             
             template<int fstype, typename reqfntype, reqfntype* reqfn>
@@ -107,9 +108,9 @@ namespace x10
                 void response_fn(uv_fs_t* req)
                 {
                     if(req->result == -1)
-                    { event_emitter::invoke_target<callback_type>(req->data, error_t(static_cast<uv_err_code>(req->errorno)), std::string()); }
+                    { event_object::invoke_from_target<callback_type>(req->data, error_t(static_cast<uv_err_code>(req->errorno)), std::string()); }
                     else
-                    { event_emitter::invoke_target<callback_type>(req->data, no_error, std::string(static_cast<char*>(req->ptr))); }
+                    { event_object::invoke_from_target<callback_type>(req->data, no_error, std::string(static_cast<char*>(req->ptr))); }
                 }
             };
             
@@ -123,7 +124,7 @@ namespace x10
                 {
                     if(req->result == -1)
                     {
-                        event_emitter::invoke_target<callback_type>(req->data, error_t(static_cast<uv_err_code>(req->errorno)), std::vector<std::string>());
+                        event_object::invoke_from_target<callback_type>(req->data, error_t(static_cast<uv_err_code>(req->errorno)), std::vector<std::string>());
                     }
                     else
                     {
@@ -146,7 +147,7 @@ namespace x10
 #endif
                         }
                         
-                        event_emitter::invoke_target<callback_type>(req->data, no_error, names);
+                        event_object::invoke_from_target<callback_type>(req->data, no_error, names);
                     }
                 }
             };
@@ -155,10 +156,10 @@ namespace x10
             error_t exec(typename T::callback_type callback, P&&... params)
             {
                 uv_fs_t req;
-                event_emitter event;
+                event_object event;
                 req.data = &event;
                 
-                event.add<typename T::callback_type>(callback);
+                event.set<typename T::callback_type>(callback);
                 auto res = T::request_fn(uv_default_loop(), &req, std::forward<P>(params)..., nullptr);
                 
                 if(res < 0)
@@ -188,22 +189,22 @@ namespace x10
                 uv_fs_t* req = new uv_fs_t;
                 assert(req);
                 
-                req->data = new event_emitter;
+                req->data = new event_object;
                 assert(req->data);
                 
-                event_emitter::add<typename T::callback_type>(req->data, callback);
+                event_object::set_to_target<typename T::callback_type>(req->data, callback);
                 auto res = T::request_fn(uv_default_loop(), req, std::forward<P>(params)..., [](uv_fs_t* r) {
                     assert(T::fs_type == r->fs_type);
                     T::response_fn(r);
 
-                    delete reinterpret_cast<event_emitter*>(r->data);
+                    delete reinterpret_cast<event_object*>(r->data);
                     uv_fs_req_cleanup(r);
                     delete r;
                 });
                 if(res < 0)
                 {
                     // async initiation failed: clean-up and throw an exception.
-                    delete reinterpret_cast<event_emitter*>(req->data);
+                    delete reinterpret_cast<event_object*>(req->data);
                     uv_fs_req_cleanup(req);
                     delete req;
                     

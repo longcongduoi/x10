@@ -13,20 +13,7 @@ namespace x10
 {
     namespace detail
     {
-        enum cid
-        {
-            cid_uv_close,
-            cid_uv_listen,
-            cid_uv_read_start,
-            cid_uv_read2_start,
-            cid_uv_write,
-            cid_uv_write2,
-            cid_uv_shutdown,
-            cid_uv_connect,
-            cid_uv_connect6,
-            cid_max
-        };
-        
+        // serialized callback list
         class scl_base
         {
         public:
@@ -39,7 +26,6 @@ namespace x10
             virtual std::size_t count() const = 0;
         };
         
-        // serialized callback list
         template<typename>
         class scl;
         
@@ -127,7 +113,7 @@ namespace x10
                     }
                     catch(...)
                     {
-                        printf("....");
+                        // TODO: handle exception
                     }
                 }
                 
@@ -220,6 +206,132 @@ namespace x10
             
         private:
             std::shared_ptr<scl_base> callbacks_;
+        };
+        
+        // serialized callback object
+        class sco_base
+        {
+        public:
+            sco_base() {}
+            virtual ~sco_base() {}
+            
+            virtual void set(void*) = 0;
+        };
+        
+        template<typename>
+        class sco;
+        
+        template<typename R, typename ...P>
+        class sco<std::function<R(P...)>> : public sco_base
+        {
+        public:
+            typedef std::function<R(P...)> callback_type;
+            typedef std::shared_ptr<callback_type> callback_ptr;
+            
+        public:
+            sco()
+            : object_(nullptr)
+            {
+            }
+            
+            virtual ~sco()
+            {
+                if(object_)
+                {
+                    delete object_;
+                    object_ = nullptr;
+                }
+            }
+            
+            void set(void* object)
+            {
+                assert(!object_);
+                
+                object_ = reinterpret_cast<callback_type*>(object);
+            }
+            
+            template<typename ...A>
+            void invoke(A&&... args)
+            {
+                try
+                {
+                    // execute the callback
+                    (*object_)(std::forward<A>(args)...);
+                }
+                catch(...)
+                {
+                    // TODO: handle exception
+                }
+            }
+            
+        private:
+            callback_type* object_;
+        };
+        
+        class event_object
+        {
+        public:
+            event_object()
+                : callback_(nullptr)
+            {
+            }
+            
+            ~event_object()
+            {
+                if(callback_)
+                {
+                    delete callback_;
+                    callback_ = nullptr;
+                }
+            }
+            
+            template<typename T>
+            void set(const T& callback)
+            {
+                assert(!callback_);
+                
+                callback_ = new sco<T>();
+                assert(callback_);
+
+                auto x = new T(callback);
+                assert(x);
+                
+                callback_->set(x);
+            }
+            
+            template<typename T>
+            static void set_to_target(void* target, const T& callback)
+            {
+                auto self = reinterpret_cast<event_object*>(target);
+                assert(self);
+                
+                self->set<T>(callback);
+            }
+            
+            template<typename T, typename ...A>
+            void invoke(A&&... args)
+            {
+                assert(callback_);
+                
+                auto x = dynamic_cast<sco<T>*>(callback_);
+                assert(x);
+                
+                x->invoke(std::forward<A>(args)...);
+            }
+            
+            template<typename T, typename ...A>
+            static void invoke_from_target(void* target, A&&... args)
+            {
+                auto self = reinterpret_cast<event_object*>(target);
+                assert(self);
+                
+                self->invoke<T>(std::forward<A>(args)...);
+            }
+            
+        private:
+            // can this be a raw pointer?
+            //std::shared_ptr<sco_base> callback_;
+            sco_base* callback_;
         };
     }
 }
