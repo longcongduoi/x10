@@ -101,27 +101,27 @@ void fs_test()
 
 int main(int argc, char** argv)
 {
+    return loop::start([](){
 #if 1
-    fs_test();
+        fs_test();
 #else
-    auto fd = file::open(readonly, "app1.cpp");
-    std::cout << "sync open: " << fd << std::endl;
-    std::cout << "sync close: " << file::close(fd).str() << std::endl;
-    
-    file::open("app1.cpp", O_RDONLY, 0, [&](error_t e, file_t f) {
-        if(e)
-        {
-            std::cout << "async open error: " << e.str() << std::endl;
-            return;
-        }
-
-        std::cout << "async open: " << f << std::endl;
+        auto fd = file::open(readonly, "app1.cpp");
+        std::cout << "sync open: " << fd << std::endl;
+        std::cout << "sync close: " << file::close(fd).str() << std::endl;
         
-        file::close(f, [](error_t e) {
-            std::cout << "async close: " << e.str() << std::endl;
+        file::open("app1.cpp", O_RDONLY, 0, [&](error_t e, file_t f) {
+            if(e)
+            {
+                std::cout << "async open error: " << e.str() << std::endl;
+                return;
+            }
+            
+            std::cout << "async open: " << f << std::endl;
+            
+            file::close(f, [](error_t e) {
+                std::cout << "async close: " << e.str() << std::endl;
+            });
         });
-    });
 #endif
-    
-    return loop::start();
+    });
 }

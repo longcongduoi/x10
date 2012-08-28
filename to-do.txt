@@ -1,0 +1,5 @@
+- can override default new and delete with loop class's allocator?
+    - if so, remove all explicit alloc(), dealloc() calls in fs.h
+    - if not, convert all new and delete in library to loop::alloc() and loop::dealloc()
+    
+- 

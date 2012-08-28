@@ -5,6 +5,7 @@
 #include <functional>
 #include "common.h"
 #include "error.h"
+#include "loop.h"
 #include "task.h"
 #include "event.h"
 
@@ -183,10 +184,10 @@ namespace x10
             template<typename T, typename ...P>
             inline error_t exec_async(typename T::callback_type callback, P&&... params)
             {
-                uv_fs_t* req = new uv_fs_t;
+                auto req = loop::get()->allocT<uv_fs_t>();
                 assert(req);
                 
-                req->data = new event_object;
+                req->data = loop::get()->allocT<event_object>();
                 assert(req->data);
                 
                 event_object::set_to_target<typename T::callback_type>(req->data, callback);
@@ -194,16 +195,16 @@ namespace x10
                     assert(T::fs_type == r->fs_type);
                     T::response_fn(r);
 
-                    delete reinterpret_cast<event_object*>(r->data);
+                    loop::get()->deallocT(reinterpret_cast<event_object*>(r->data));
                     uv_fs_req_cleanup(r);
-                    delete r;
+                    loop::get()->deallocT(r);
                 });
                 if(res < 0)
                 {
                     // async initiation failed: clean-up and throw an exception.
-                    delete reinterpret_cast<event_object*>(req->data);
+                    loop::get()->deallocT(reinterpret_cast<event_object*>(req->data));
                     uv_fs_req_cleanup(req);
-                    delete req;
+                    loop::get()->dealloc(req);
                     
                     return error_t(get_last_uv_error());
                 }
@@ -242,7 +243,7 @@ namespace x10
                         else
                         {
                             uv_fs_req_cleanup(&req_);
-                            delete this;
+                            loop::get()->deallocT(this);
                         }
                     }
                     return err;
@@ -269,7 +270,7 @@ namespace x10
                     }
                     
                     uv_fs_req_cleanup(&req_);
-                    delete this;
+                    loop::get()->deallocT(this);
                 }
                 
                 void end()
@@ -284,7 +285,7 @@ namespace x10
                     }
                     
                     uv_fs_req_cleanup(&req_);
-                    delete this;
+                    loop::get()->deallocT(this);
                 }
                 
             private:
@@ -324,7 +325,7 @@ namespace x10
             // read all data asynchronously
             inline error_t read_to_end(int fd, rte_callback_type callback)
             {
-                auto ctx = new rte_context(fd, 512, callback);
+                auto ctx = loop::get()->allocT<rte_context>(fd, 512, callback);
                 assert(ctx);
                 
                 return error_t(ctx->read(false));
