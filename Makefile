@@ -20,14 +20,14 @@ ifeq (Linux,$(uname_S))
     LDFLAGS += -lrt
 endif
 
-default: demo/app1
+default: demo/app1 demo/lib1.o
 
-demo/app1: src/x10.o libuv/uv.a demo/app1.cpp
-	$(CXX) -o demo/app1 $(INCLUDES) $(CXXFLAGS) $(LDFLAGS) src/x10.o libuv/uv.a demo/app1.cpp
+demo/app1: demo/app1.cpp $(wildcard include/*.h) libuv/uv.a demo/lib1.o
+	$(CXX) -o demo/app1 $(INCLUDES) $(CXXFLAGS) $(LDFLAGS) demo/lib1.o libuv/uv.a demo/app1.cpp
+
+demo/lib1.o: libuv/uv.a demo/lib1.cpp demo/lib1.h $(wildcard include/*.h)
+	$(CXX) -o demo/lib1.o $(INCLUDES) $(CXXFLAGS) -c demo/lib1.cpp
     
-src/x10.o: src/x10.cpp $(wildcard include/*.h)
-	$(CXX) -c -o src/x10.o $(INCLUDES) $(CXXFLAGS) src/x10.cpp
-
 libuv/uv.a:
 	$(MAKE) -C libuv
 
@@ -35,5 +35,5 @@ clean-all: clean
 	rm -f libuv/uv.a
 
 clean:
-	rm -f src/x10.o
+	rm -f demo/lib1
 	rm -f demo/app1

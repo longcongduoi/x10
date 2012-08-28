@@ -2,6 +2,7 @@
 #define __ERROR_H__
 
 #include <cassert>
+#include <string>
 #include <uv.h>
 #include "common.h"
 
@@ -9,8 +10,8 @@ namespace x10
 {
     namespace detail
     {
-        uv_err_t get_last_uv_error() { return uv_last_error(uv_default_loop()); }
-        const char* get_last_uv_error_str() { return uv_strerror(get_last_uv_error()); }
+        inline uv_err_t get_last_uv_error() { return uv_last_error(uv_default_loop()); }
+        inline const char* get_last_uv_error_str() { return uv_strerror(get_last_uv_error()); }
     }
     
     enum class error_code

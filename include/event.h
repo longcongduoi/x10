@@ -1,5 +1,5 @@
-#ifndef __EVENT_EMITTER_H__
-#define __EVENT_EMITTER_H__
+#ifndef __EVENT_H__
+#define __EVENT_H__
 
 #include <functional>
 #include <cassert>
@@ -20,7 +20,7 @@ namespace x10
             scl_base() {}
             virtual ~scl_base() {}
 
-            virtual void add(void*, bool once=false) = 0;
+            virtual void* add(void*, bool once=false) = 0;
             virtual bool remove(void*) = 0;
             virtual void clear() = 0;
             virtual std::size_t count() const = 0;
@@ -34,7 +34,7 @@ namespace x10
         {
         public:
             typedef std::function<R(P...)> callback_type;
-            typedef std::shared_ptr<callback_type> callback_ptr;
+            typedef std::list<std::pair<callback_type, bool>> list_type;
             
         public:
             scl()
@@ -46,12 +46,12 @@ namespace x10
             {
             }
             
-            virtual void add(void* callback, bool once=false)
+            virtual void* add(void* callback, bool once=false)
             {
                 assert(callback);
                 
-                // wrap the callback object with shared_ptr<>.
-                list_.push_back(std::make_pair(callback_ptr(reinterpret_cast<callback_type*>(callback)), once));
+                list_.push_back(std::make_pair(*(reinterpret_cast<callback_type*>(callback)), once));                
+                return static_cast<void*>(list_.back().first);
             }
             
             virtual bool remove(void* callback)
@@ -60,7 +60,7 @@ namespace x10
                 auto d = list_.end();
                 for(auto it=list_.begin();it!=list_.end();++it)
                 {
-                    if(reinterpret_cast<void*>(it->first.get()) == callback)
+                    if(static_cast<void*>(&(it->first)) == callback)
                     {
                         d = it;
                         break;
@@ -94,50 +94,54 @@ namespace x10
             void invoke(A&&... args)
             {
                 // set of callbacks to delete after execution.
-                std::set<callback_ptr> to_delete;
+                std::set<typename list_type::iterator> to_delete;
                 
                 // copy callback list: to avoid modification inside the 'for' loop.
                 auto callbacks_copy = list_;
                 for(auto c : callbacks_copy)
                 {
+                    // execute the callback
+                    auto callback = *(c.first);
+                    assert(callback);
+                    
                     try
                     {
-                        // execute the callback
-                        auto callback = *(c.first);
-                        assert(callback);
-
                         callback(std::forward<A>(args)...);
-                        
-                        // if it's marked as 'once': add to delete list.
-                        if(c.second) to_delete.insert(c.first);
                     }
                     catch(...)
                     {
                         // TODO: handle exception
                     }
+                    
+                    // if it's marked as 'once': add to delete list.
+                    if(c.second) to_delete.insert(c);
                 }
                 
                 // remove 'once' callbacks
-                list_.remove_if([&](std::pair<callback_ptr, bool>& it)
-                                {
-                                    return to_delete.find(it.first) != to_delete.end();
-                                });
+                for(auto d : to_delete)
+                {
+                    list_.remove(d);
+                }
             }
             
         private:
-            std::list<std::pair<callback_ptr, bool>> list_;
+            std::list<std::pair<callback_type, bool>> list_;
         };
         
         class event_emitter
         {
         public:
             event_emitter()
-                : callbacks_()
-            {
-            }
+                : callbacks_(nullptr)
+            {}
             
             ~event_emitter()
             {
+                if(callbacks_)
+                {
+                    delete callbacks_;
+                    callbacks_ = nullptr;
+                }
             }
             
             template<typename T>
@@ -145,7 +149,7 @@ namespace x10
             {
                 if(!callbacks_)
                 {
-                    callbacks_.reset(new scl<T>());
+                    callbacks_ = new scl<T>();
                     assert(callbacks_);
                 }
                 
@@ -178,7 +182,7 @@ namespace x10
             {
                 assert(callbacks_);
 
-                auto x = dynamic_cast<scl<T>*>(callbacks_.get());
+                auto x = dynamic_cast<scl<T>*>(callbacks_);
                 assert(x);
 
                 x->invoke(std::forward<A>(args)...);
@@ -205,17 +209,14 @@ namespace x10
             }
             
         private:
-            std::shared_ptr<scl_base> callbacks_;
+            scl_base* callbacks_;
         };
         
         // serialized callback object
         class sco_base
         {
         public:
-            sco_base() {}
             virtual ~sco_base() {}
-            
-            virtual void set(void*) = 0;
         };
         
         template<typename>
@@ -226,37 +227,19 @@ namespace x10
         {
         public:
             typedef std::function<R(P...)> callback_type;
-            typedef std::shared_ptr<callback_type> callback_ptr;
             
         public:
-            sco()
-            : object_(nullptr)
-            {
-            }
-            
-            virtual ~sco()
-            {
-                if(object_)
-                {
-                    delete object_;
-                    object_ = nullptr;
-                }
-            }
-            
-            void set(void* object)
-            {
-                assert(!object_);
-                
-                object_ = reinterpret_cast<callback_type*>(object);
-            }
-            
+            sco(const callback_type& callback)
+                : object_(callback)
+            {}
+
             template<typename ...A>
             void invoke(A&&... args)
             {
                 try
                 {
                     // execute the callback
-                    (*object_)(std::forward<A>(args)...);
+                    object_(std::forward<A>(args)...);
                 }
                 catch(...)
                 {
@@ -265,7 +248,7 @@ namespace x10
             }
             
         private:
-            callback_type* object_;
+            callback_type object_;
         };
         
         class event_object
@@ -273,8 +256,7 @@ namespace x10
         public:
             event_object()
                 : callback_(nullptr)
-            {
-            }
+            {}
             
             ~event_object()
             {
@@ -290,13 +272,8 @@ namespace x10
             {
                 assert(!callback_);
                 
-                callback_ = new sco<T>();
+                callback_ = new sco<T>(callback);
                 assert(callback_);
-
-                auto x = new T(callback);
-                assert(x);
-                
-                callback_->set(x);
             }
             
             template<typename T>
@@ -329,12 +306,10 @@ namespace x10
             }
             
         private:
-            // can this be a raw pointer?
-            //std::shared_ptr<sco_base> callback_;
             sco_base* callback_;
         };
     }
 }
 
 
-#endif//__EVENT_EMITTER_H__
+#endif//__EVENT_H__

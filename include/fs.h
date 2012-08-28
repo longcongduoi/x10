@@ -22,34 +22,17 @@ namespace x10
             
             typedef void (*response_fn_type)(uv_fs_t*);
             
-            void response_fn1(uv_fs_t* req)
-            {
-                event_object::invoke_from_target<callback_type2>(req->data, no_error);
-            }
-            
-            void response_fn2(uv_fs_t* req)
-            {
-                if(req->result == -1)
-                { event_object::invoke_from_target<callback_type2>(req->data, error_t(static_cast<uv_err_code>(req->errorno))); }
-                else
-                { event_object::invoke_from_target<callback_type2>(req->data, no_error); }
-            }
-            
-            void response_fn3(uv_fs_t* req)
-            {
-                if(req->result == -1)
-                { event_object::invoke_from_target<callback_type3>(req->data, error_t(static_cast<uv_err_code>(req->errorno)), -1); }
-                else
-                { event_object::invoke_from_target<callback_type3>(req->data, no_error, static_cast<int>(req->result)); }
-            }
-            
             template<int fstype, typename reqfntype, reqfntype* reqfn>
             struct type1
             {
                 static const int fs_type = fstype;
                 typedef callback_type2 callback_type;
                 static constexpr reqfntype* request_fn = reqfn;
-                static constexpr response_fn_type response_fn = &response_fn1;
+                
+                static void response_fn(uv_fs_t* req)
+                {
+                    event_object::invoke_from_target<callback_type2>(req->data, no_error);
+                }
             };
             
             template<int fstype, typename reqfntype, reqfntype* reqfn>
@@ -58,7 +41,14 @@ namespace x10
                 static const int fs_type = fstype;
                 typedef callback_type2 callback_type;
                 static constexpr reqfntype* request_fn = reqfn;
-                static constexpr response_fn_type response_fn = &response_fn2;
+                
+                static void response_fn(uv_fs_t* req)
+                {
+                    if(req->result == -1)
+                    { event_object::invoke_from_target<callback_type2>(req->data, error_t(static_cast<uv_err_code>(req->errorno))); }
+                    else
+                    { event_object::invoke_from_target<callback_type2>(req->data, no_error); }
+                }
             };
             
             template<int fstype, typename reqfntype, reqfntype* reqfn>
@@ -67,7 +57,14 @@ namespace x10
                 static const int fs_type = fstype;
                 typedef callback_type3 callback_type;
                 static constexpr reqfntype* request_fn = reqfn;
-                static constexpr response_fn_type response_fn = &response_fn3;
+
+                static void response_fn(uv_fs_t* req)
+                {
+                    if(req->result == -1)
+                    { event_object::invoke_from_target<callback_type3>(req->data, error_t(static_cast<uv_err_code>(req->errorno)), -1); }
+                    else
+                    { event_object::invoke_from_target<callback_type3>(req->data, no_error, static_cast<int>(req->result)); }
+                }
             };
             
             struct utime : public type1<UV_FS_UTIME, decltype(uv_fs_utime), uv_fs_utime> {};
@@ -153,7 +150,7 @@ namespace x10
             };
                         
             template<typename T, typename ...P>
-            error_t exec(typename T::callback_type callback, P&&... params)
+            inline error_t exec(typename T::callback_type callback, P&&... params)
             {
                 uv_fs_t req;
                 event_object event;
@@ -184,7 +181,7 @@ namespace x10
             }
             
             template<typename T, typename ...P>
-            error_t exec_async(typename T::callback_type callback, P&&... params)
+            inline error_t exec_async(typename T::callback_type callback, P&&... params)
             {
                 uv_fs_t* req = new uv_fs_t;
                 assert(req);
@@ -325,7 +322,7 @@ namespace x10
             };
             
             // read all data asynchronously
-            error_t read_to_end(int fd, rte_callback_type callback)
+            inline error_t read_to_end(int fd, rte_callback_type callback)
             {
                 auto ctx = new rte_context(fd, 512, callback);
                 assert(ctx);
@@ -339,7 +336,7 @@ namespace x10
     {
         // returns file handle.
         // returns invalid_file value when failed.
-        file_t open(const std::string& path, int flags, int mode)
+        inline file_t open(const std::string& path, int flags, int mode)
         {
             int fd = invalid_file;
             
@@ -350,23 +347,23 @@ namespace x10
             return fd;
         }
         
-        file_t open(readonly_t, const std::string& path)
+        inline file_t open(readonly_t, const std::string& path)
         {
             return open(path, O_RDONLY, 0);
         }
         
-        file_t open(writeonly_t, const std::string& path, bool append=false)
+        inline file_t open(writeonly_t, const std::string& path, bool append=false)
         {
             return open(path, append?O_WRONLY|O_APPEND:O_WRONLY, 0);
         }
         
-        file_t open(readwrite_t, const std::string& path, bool append=false)
+        inline file_t open(readwrite_t, const std::string& path, bool append=false)
         {
             return open(path, append?O_RDWR|O_APPEND:O_RDWR, 0);
         }
         
         template<typename callback_type>
-        error_t open(const std::string& path, int flags, int mode, callback_type callback)
+        inline error_t open(const std::string& path, int flags, int mode, callback_type callback)
         {
             // mutable keyword is required because http://stackoverflow.com/a/5503690
             return fs::detail::exec_async<fs::detail::open>([callback](error_t e, int f) mutable {
@@ -374,22 +371,22 @@ namespace x10
             }, path.c_str(), flags, mode);
         }
         
-        error_t open(readonly_t, const std::string& path, std::function<void(error_t, file_t)> callback)
+        inline error_t open(readonly_t, const std::string& path, std::function<void(error_t, file_t)> callback)
         {
             return open(path, O_RDONLY, 0, callback);
         }
         
-        error_t open(writeonly_t, const std::string& path, std::function<void(error_t, file_t)> callback, bool append=false)
+        inline error_t open(writeonly_t, const std::string& path, std::function<void(error_t, file_t)> callback, bool append=false)
         {
             return open(path, append?O_WRONLY|O_APPEND:O_WRONLY, 0, callback);
         }
         
-        error_t open(readwrite_t, const std::string& path, std::function<void(error_t, file_t)> callback, bool append=false)
+        inline error_t open(readwrite_t, const std::string& path, std::function<void(error_t, file_t)> callback, bool append=false)
         {
             return open(path, append?O_RDWR|O_APPEND:O_RDWR, 0, callback);
         }
         
-        error_t close(file_t f)
+        inline error_t close(file_t f)
         {
             error_t err(error_code::ok);
             fs::detail::exec<fs::detail::close>([&err](error_t e) { err = e; }, static_cast<int>(f));
@@ -397,12 +394,12 @@ namespace x10
         }
         
         template<typename callback_type>
-        error_t close(file_t f, callback_type callback)
+        inline error_t close(file_t f, callback_type callback)
         {
             return fs::detail::exec_async<fs::detail::close>([callback](error_t e) mutable { callback(e); }, static_cast<int>(f));
         }
         
-        error_t rename(const std::string& path, const std::string& new_path)
+        inline error_t rename(const std::string& path, const std::string& new_path)
         {
             error_t err(error_code::ok);
             fs::detail::exec<fs::detail::rename>([&err](error_t e) { err = e; }, path.c_str(), new_path.c_str());
@@ -410,7 +407,7 @@ namespace x10
         }
         
         template<typename callback_type>
-        error_t rename(const std::string& path, const std::string& new_path, callback_type callback)
+        inline error_t rename(const std::string& path, const std::string& new_path, callback_type callback)
         {
             return fs::detail::exec_async<fs::detail::rename>([callback](error_t e) mutable { callback(e); }, path.c_str(), new_path.c_str());
         }
