@@ -2,50 +2,21 @@
 #define __LOOP_H__
 
 #include <cassert>
+#include "memory_allocator.h"
 
 namespace x10
 {
-    class memory_allocator
-    {
-    public:
-        virtual ~memory_allocator() {}
-        
-        virtual void* alloc(std::size_t size) = 0;
-        virtual void dealloc(void* ptr) = 0;
-    };
-    
-    namespace detail
-    {
-        class default_allocator : public memory_allocator
-        {
-        public:
-            default_allocator()
-            {}
-            
-            virtual ~default_allocator()
-            {}
-            
-            virtual void* alloc(std::size_t size)
-            {
-                return static_cast<void*>(new char[size]);
-            }
-            
-            virtual void dealloc(void* ptr)
-            {
-                delete[] reinterpret_cast<char*>(ptr);
-            }
-        };
-    }
-    
     class loop
     {
     public:
-        // allocate a chunk of memory.
+        //! @desc Allocates a chunk of memory using the specified memory allocator.
+        //! @param size The size of memory to allocate.
+        //! @return The address of newly allocated memory chunk.
         void* alloc(std::size_t size) { return allocator_->alloc(size); }
         
         // deallocate a chunk of memory.
         void dealloc(void* ptr) { allocator_->dealloc(ptr); }
-        
+                
         // allocate a chunk of memory, and, call the constructor of type T.
         template<typename T, typename ...A>
         T* allocT(A&& ...args)
@@ -115,8 +86,8 @@ namespace x10
         }
 
         // no copy allowed
-        loop(const loop&);
-        void operator=(const loop&);
+        loop(const loop&) = delete;
+        void operator=(const loop&) = delete;
         
         static loop* instance(loop* ptr);
         
