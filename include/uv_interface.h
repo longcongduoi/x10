@@ -1,6 +1,7 @@
 #ifndef __UV_INTERFACE_H__
 #define __UV_INTERFACE_H__
 
+#include <uv.h>
 #include "common.h"
 #include "error.h"
 
@@ -8,6 +9,9 @@ namespace x10
 {
     namespace detail
     {
+        inline uv_err_t get_last_uv_error() { return uv_last_error(uv_default_loop()); }
+        inline const char* get_last_uv_error_str() { return uv_strerror(get_last_uv_error()); }
+        
         template<typename F, typename ...A>
         inline error_t run_(F fn, A&&... args)
         {

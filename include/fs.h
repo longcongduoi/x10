@@ -5,6 +5,7 @@
 #include <functional>
 #include "common.h"
 #include "error.h"
+#include "uv_interface.h"
 #include "loop.h"
 #include "task.h"
 #include "event.h"
@@ -15,24 +16,21 @@ namespace x10
     {
         namespace detail
         {
-            using x10::detail::event_object;
             using x10::detail::get_last_uv_error;
-            
-            typedef std::function<void(error_t)> callback_type2;
-            typedef std::function<void(error_t, int)> callback_type3;
-            
-            typedef void (*response_fn_type)(uv_fs_t*);
             
             template<int fstype, typename reqfntype, reqfntype* reqfn>
             struct type1
             {
                 static const int fs_type = fstype;
-                typedef callback_type2 callback_type;
+                typedef std::function<void(error_t)> callback_type;
                 static constexpr reqfntype* request_fn = reqfn;
                 
                 static void response_fn(uv_fs_t* req)
                 {
-                    event_object::invoke_from_target<callback_type2>(req->data, no_error);
+                    auto callback = *(reinterpret_cast<callback_type*>(req->data));
+                    assert(callback);
+                    
+                    callback(no_error);
                 }
             };
             
@@ -40,15 +38,18 @@ namespace x10
             struct type2
             {
                 static const int fs_type = fstype;
-                typedef callback_type2 callback_type;
+                typedef std::function<void(error_t)> callback_type;
                 static constexpr reqfntype* request_fn = reqfn;
                 
                 static void response_fn(uv_fs_t* req)
                 {
+                    auto callback = *(reinterpret_cast<callback_type*>(req->data));
+                    assert(callback);
+
                     if(req->result == -1)
-                    { event_object::invoke_from_target<callback_type2>(req->data, error_t(static_cast<uv_err_code>(req->errorno))); }
+                    { callback(error_t(static_cast<uv_err_code>(req->errorno))); }
                     else
-                    { event_object::invoke_from_target<callback_type2>(req->data, no_error); }
+                    { callback(no_error); }
                 }
             };
             
@@ -56,15 +57,18 @@ namespace x10
             struct type3
             {
                 static const int fs_type = fstype;
-                typedef callback_type3 callback_type;
+                typedef std::function<void(error_t, int)> callback_type;
                 static constexpr reqfntype* request_fn = reqfn;
 
                 static void response_fn(uv_fs_t* req)
                 {
+                    auto callback = *(reinterpret_cast<callback_type*>(req->data));
+                    assert(callback);
+
                     if(req->result == -1)
-                    { event_object::invoke_from_target<callback_type3>(req->data, error_t(static_cast<uv_err_code>(req->errorno)), -1); }
+                    { callback(error_t(static_cast<uv_err_code>(req->errorno)), -1); }
                     else
-                    { event_object::invoke_from_target<callback_type3>(req->data, no_error, static_cast<int>(req->result)); }
+                    { callback(no_error, static_cast<int>(req->result)); }
                 }
             };
             
@@ -105,10 +109,13 @@ namespace x10
                 
                 void response_fn(uv_fs_t* req)
                 {
+                    auto callback = *(reinterpret_cast<callback_type*>(req->data));
+                    assert(callback);
+                    
                     if(req->result == -1)
-                    { event_object::invoke_from_target<callback_type>(req->data, error_t(static_cast<uv_err_code>(req->errorno)), std::string()); }
+                    { callback(error_t(static_cast<uv_err_code>(req->errorno)), std::string()); }
                     else
-                    { event_object::invoke_from_target<callback_type>(req->data, no_error, std::string(static_cast<char*>(req->ptr))); }
+                    { callback(no_error, std::string(static_cast<char*>(req->ptr))); }
                 }
             };
             
@@ -120,9 +127,12 @@ namespace x10
                 
                 void response_fn(uv_fs_t* req)
                 {
+                    auto callback = *(reinterpret_cast<callback_type*>(req->data));
+                    assert(callback);
+                    
                     if(req->result == -1)
                     {
-                        event_object::invoke_from_target<callback_type>(req->data, error_t(static_cast<uv_err_code>(req->errorno)), std::vector<std::string>());
+                        callback(error_t(static_cast<uv_err_code>(req->errorno)), std::vector<std::string>());
                     }
                     else
                     {
@@ -145,7 +155,7 @@ namespace x10
 #endif
                         }
                         
-                        event_object::invoke_from_target<callback_type>(req->data, no_error, names);
+                        callback(no_error, names);
                     }
                 }
             };
@@ -154,10 +164,8 @@ namespace x10
             inline error_t exec(typename T::callback_type callback, P&&... params)
             {
                 uv_fs_t req;
-                event_object event;
-                req.data = &event;
+                req.data = &callback;
                 
-                event.set<typename T::callback_type>(callback);
                 auto res = T::request_fn(uv_default_loop(), &req, std::forward<P>(params)..., nullptr);
                 
                 if(res < 0)
@@ -187,22 +195,21 @@ namespace x10
                 auto req = loop::get()->allocT<uv_fs_t>();
                 assert(req);
                 
-                req->data = loop::get()->allocT<event_object>();
+                req->data = loop::get()->allocT<typename T::callback_type>(callback);
                 assert(req->data);
                 
-                event_object::set_to_target<typename T::callback_type>(req->data, callback);
                 auto res = T::request_fn(uv_default_loop(), req, std::forward<P>(params)..., [](uv_fs_t* r) {
                     assert(T::fs_type == r->fs_type);
                     T::response_fn(r);
 
-                    loop::get()->deallocT(reinterpret_cast<event_object*>(r->data));
+                    loop::get()->deallocT(reinterpret_cast<typename T::callback_type*>(r->data));
                     uv_fs_req_cleanup(r);
                     loop::get()->deallocT(r);
                 });
                 if(res < 0)
                 {
                     // async initiation failed: clean-up and throw an exception.
-                    loop::get()->deallocT(reinterpret_cast<event_object*>(req->data));
+                    loop::get()->deallocT(reinterpret_cast<typename T::callback_type*>(req->data));
                     uv_fs_req_cleanup(req);
                     loop::get()->dealloc(req);
                     
