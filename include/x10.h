@@ -5,5 +5,6 @@
 #include "error.h"
 #include "loop.h"
 #include "fs.h"
+#include "thread.h"
 
 #endif//__X10_H__

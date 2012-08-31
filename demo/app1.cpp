@@ -103,6 +103,10 @@ int main(int argc, char** argv)
 {
     return loop::start([](){
 #if 1
+        post_task([](){
+            std::cout << "task" << std::endl;
+        });
+        
         fs_test();
 #else
         auto fd = file::open(readonly, "app1.cpp");

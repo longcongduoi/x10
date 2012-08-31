@@ -17,6 +17,8 @@ namespace x10
         namespace detail
         {
             using x10::detail::get_last_uv_error;
+            using x10::detail::create_fs_req;
+            using x10::detail::delete_fs_req;
             
             template<int fstype, typename reqfntype, reqfntype* reqfn>
             struct type1
@@ -192,27 +194,19 @@ namespace x10
             template<typename T, typename ...P>
             inline error_t exec_async(typename T::callback_type callback, P&&... params)
             {
-                auto req = loop::get()->allocT<uv_fs_t>();
-                assert(req);
-                
-                req->data = loop::get()->allocT<typename T::callback_type>(callback);
-                assert(req->data);
+                auto req = create_fs_req(callback);
                 
                 auto res = T::request_fn(uv_default_loop(), req, std::forward<P>(params)..., [](uv_fs_t* r) {
                     assert(T::fs_type == r->fs_type);
                     T::response_fn(r);
-
-                    loop::get()->deallocT(reinterpret_cast<typename T::callback_type*>(r->data));
-                    uv_fs_req_cleanup(r);
-                    loop::get()->deallocT(r);
+                    
+                    delete_fs_req<typename T::callback_type>(r);
                 });
                 if(res < 0)
                 {
                     // async initiation failed: clean-up and throw an exception.
-                    loop::get()->deallocT(reinterpret_cast<typename T::callback_type*>(req->data));
-                    uv_fs_req_cleanup(req);
-                    loop::get()->dealloc(req);
-                    
+                    delete_fs_req<typename T::callback_type>(req);
+
                     return error_t(get_last_uv_error());
                 }
                 
