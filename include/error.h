@@ -77,9 +77,11 @@ namespace x10
         error_t(error_t&& c) : code_(c.code_) {}
         ~error_t() {}
         
-        operator bool() const { return code_ != error_code::ok; }
-        bool operator !() const { return  code_ == error_code::ok; }
+        //operator bool() const { return code_ != error_code::ok; }
+        //bool operator !() const { return  code_ == error_code::ok; }
         error_t& operator =(const error_t& c) { code_ = c.code_; return *this; }
+        bool operator ==(const error_t& e) { return (code_ == e.code_); }
+        bool operator !=(const error_t& e) { return (code_ != e.code_); }
         
         error_code code() const
         {

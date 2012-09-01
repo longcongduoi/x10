@@ -344,7 +344,7 @@ namespace x10
             int fd = invalid_file;
             
             fs::detail::exec<fs::detail::open>([&fd](error_t err, int f) {
-                if(!err) { fd = f; }
+                if(err == no_error) { fd = f; }
             }, path.c_str(), flags, mode);
             
             return fd;

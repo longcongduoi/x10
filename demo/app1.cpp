@@ -1,131 +1,73 @@
 #include <iostream>
-#include <x10.h>
+#include <list>
+#include <functional>
 
-using namespace x10;
-
-/*
- sync open: 10
- sync close: success
- fs_test_func()
- e: 0 f: 10
- fs_test_functor()
- e: 0 f: 11
- lambda
- e: 0 f: 12
- e: 0
- e: 0
- fs_test_func()
- e: 0 f: 10
- fs_test_functor()
- e: 0 f: 11
- lambda
- e: 0 f: 15
- e: 0
- e: 0
- e: 0
- fs_test_func()
- e: 0 f: 10
- fs_test_functor()
- e: 0 f: 11
- lambda
- e: 0 f: 12
- e: 0
- e: 0
- e: 0
- e: 0
-*/
-
-void fs_test_func(error_t e, file_t f)
+namespace x10
 {
-    std::cout << "fs_test_func()" << std::endl;
-    std::cout << "e: " << e << " f: " << f << std::endl;
+    class loop;
     
-    file::close(f, [](error_t e) {
-        std::cout << "e: " << e << std::endl;
-    });
+    class base_task
+    {
+        friend class loop;
+        
+    public:
+        base_task() {}
+        virtual ~base_task() {}
+        
+    private:
+        void execute()
+        {
+            
+            
+        }
+        
+        virtual void work() = 0;
+    };
+    
+    class simple_task final : public base_task
+    {
+    public:
+        simple_task(const std::function<void()>& f)
+            : f_(f)
+        {}
+        
+    private:
+        virtual void work()
+        {
+            f_();
+        }
+        
+    private:
+        std::function<void()> f_;
+    };
+    
+    class loop final
+    {
+    public:
+        int start()
+        {
+            return 0;
+        }
+        
+    private:
+        std::list<base_task*> tasks_;
+    };
 }
 
-class fs_test_functor
+class task1 : public x10::base_task
 {
-public:
-    void operator()(error_t e, file_t f)
+private:
+    virtual void work()
     {
-        std::cout << "fs_test_functor()" << std::endl;
-        std::cout << "e: " << e << " f: " << f << std::endl;
-        
-        file::close(f, [](error_t e) {
-            std::cout << "e: " << e << std::endl;
-        });
+        std::cout << "task1::work()" << std::endl;
     }
 };
 
-void fs_test()
+int main(int, char**)
 {
-    auto fd = file::open(readonly, "app1.cpp");
-    std::cout << "sync open: " << fd << std::endl;
-    std::cout << "sync close: " << file::close(fd).str() << std::endl;
+    x10::loop l;
     
-    file::open(readonly, "app1.cpp", fs_test_func);
-    file::open(readonly, "app1.cpp", fs_test_functor());
-    file::open(readonly, "app1.cpp", [](error_t e, file_t f) {
-        std::cout << "lambda" << std::endl;
-        std::cout << "e: " << e << " f: " << f << std::endl;
-        
-        file::open(readonly, "app1.cpp", fs_test_func);
-        file::open(readonly, "app1.cpp", fs_test_functor());
-        file::open(readonly, "app1.cpp", [](error_t e, file_t f) {
-            std::cout << "lambda" << std::endl;
-            std::cout << "e: " << e << " f: " << f << std::endl;
-
-            file::open(readonly, "app1.cpp", fs_test_func);
-            file::open(readonly, "app1.cpp", fs_test_functor());
-            file::open(readonly, "app1.cpp", [](error_t e, file_t f) {
-                std::cout << "lambda" << std::endl;
-                std::cout << "e: " << e << " f: " << f << std::endl;
-                
-                file::close(f, [](error_t e) {
-                    std::cout << "e: " << e << std::endl;
-                });
-            });
-            
-            file::close(f, [](error_t e) {
-                std::cout << "e: " << e << std::endl;
-            });
-        });
-        
-        file::close(f, [](error_t e) {
-            std::cout << "e: " << e << std::endl;
-        });
-    });
-}
-
-int main(int argc, char** argv)
-{
-    return loop::start([](){
-#if 1
-        post_task([](){
-            std::cout << "task" << std::endl;
-        });
-        
-        fs_test();
-#else
-        auto fd = file::open(readonly, "app1.cpp");
-        std::cout << "sync open: " << fd << std::endl;
-        std::cout << "sync close: " << file::close(fd).str() << std::endl;
-        
-        file::open("app1.cpp", O_RDONLY, 0, [&](error_t e, file_t f) {
-            if(e)
-            {
-                std::cout << "async open error: " << e.str() << std::endl;
-                return;
-            }
-            
-            std::cout << "async open: " << f << std::endl;
-            
-            file::close(f, [](error_t e) {
-                std::cout << "async close: " << e.str() << std::endl;
-            });
-        });
-#endif
-    });
+    
+    
+    return l.start();
 }
