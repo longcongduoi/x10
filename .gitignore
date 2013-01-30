@@ -1,8 +1,6 @@
 app1
 app1.dSYM
 
-# Compiled source #
-###################
 *.com
 *.class
 *.dll
@@ -11,8 +9,6 @@ app1.dSYM
 *.so
 *.a
 
-# OS generated files #
-######################
 .DS_Store
 .DS_Store?
 ._*
@@ -22,5 +18,5 @@ Icon?
 ehthumbs.db
 Thumbs.db
 
-# For XCode 4
 *.xcodeproj
+x10.sublime-*
