@@ -22,17 +22,17 @@ endif
 
 default: demo/app1 demo/lib1.o
 
-demo/app1: demo/app1.cpp $(wildcard include/*.h) libuv/uv.a demo/lib1.o
-	$(CXX) -o demo/app1 $(INCLUDES) $(CXXFLAGS) $(LDFLAGS) demo/lib1.o libuv/uv.a demo/app1.cpp
+demo/app1: demo/app1.cpp $(wildcard include/*.h) libuv/libuv.a demo/lib1.o
+	$(CXX) -o demo/app1 $(INCLUDES) $(CXXFLAGS) $(LDFLAGS) demo/lib1.o libuv/libuv.a demo/app1.cpp
 
-demo/lib1.o: libuv/uv.a demo/lib1.cpp demo/lib1.h $(wildcard include/*.h)
+demo/lib1.o: libuv/libuv.a demo/lib1.cpp demo/lib1.h $(wildcard include/*.h)
 	$(CXX) -o demo/lib1.o $(INCLUDES) $(CXXFLAGS) -c demo/lib1.cpp
     
-libuv/uv.a:
+libuv/libuv.a:
 	$(MAKE) -C libuv
 
 clean-all: clean
-	rm -f libuv/uv.a
+	rm -f libuv/libuv.a
 
 clean:
 	rm -f demo/lib1

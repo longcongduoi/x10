@@ -181,7 +181,7 @@ namespace x10
                     // sync success: invoke callback function directly.
                     req.result = res;
                     req.path = nullptr;
-                    req.errorno = 0;
+                    req.errorno = UV_OK;
                     
                     T::response_fn(&req);
                     
